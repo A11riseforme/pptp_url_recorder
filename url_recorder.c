@@ -9,7 +9,7 @@
 #define SNAPLEN 1600
 
 char log_file[] = "/var/log/url_record.txt";
-char pidfile[] = "/var/run/url_recoder";
+char pidfile[] = "/var/run/url_recorder";
 FILE* log_fp;
 
 int log_init()
