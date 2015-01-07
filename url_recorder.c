@@ -15,20 +15,8 @@ FILE* log_fp;
 int log_init()
 {
 	int ret;
-	char mode[2] = {0,'+'};
-	ret = access(log_file,0);
-	if(ret == 0){
-		mode[0] = 'a';
-	}
-	else if(ret == -1){
-		mode[0] = 'w';
-	}
-	else{
-		printf("log init error\n");
-		exit(0);
-	}
 
-	log_fp = fopen(log_file,mode);
+	log_fp = fopen(log_file,"a+");
 	if (log_fp == NULL){
 		printf("open log file failed\n");
 	}
