@@ -23,7 +23,7 @@ Debian/Ubuntu: apt-get install libpcap-dev -y
 CentOS:yum install libpcap-devel -y
 
 然后
-gcc url_recorder.c -lpcap -o url_recorder 
+gcc -o url_recorder url_recorder.c -lpcap -lpthread
 
 需要root权限
 ./url_recoder 
