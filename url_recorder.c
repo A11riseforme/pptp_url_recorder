@@ -1,21 +1,33 @@
 #include <stdio.h>
-#include <time.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <linux/if.h>
+#include <netinet/in.h>
+#include <linux/netlink.h>
+#include <linux/rtnetlink.h>
+#include <arpa/inet.h>
 #include <pcap.h>
 #include <unistd.h>
+#include <time.h>
+#include <pthread.h>
 
 #define PROMISC 1
 #define SNAPLEN 1600
 
-char log_file[] = "/var/log/url_record.txt";
-char pidfile[] = "/var/run/url_recorder";
-FILE* log_fp;
+static char log_file[] = "/var/log/url_record.txt";
+static char pidfile[] = "/var/run/url_recorder";
+static FILE* log_fp;
+static pthread_mutex_t log_mutex;
+static char nic_bitmap[20];
+static char nic[10];
 
 int log_init()
 {
 	int ret;
-
+	
+	pthread_mutex_init(&log_mutex,NULL);
 	log_fp = fopen(log_file,"a+");
 	if (log_fp == NULL){
 		printf("open log file failed\n");
@@ -33,12 +45,16 @@ int logging(char *data,int len)
 	timet = time(NULL);
 	p = localtime(&timet);
 	
+	pthread_mutex_lock(&log_mutex);
+
 	strftime(str_time,sizeof(str_time),"<--%m-%d %H:%M:%S-->  ",p);
 	fwrite(str_time,strlen(str_time),1,log_fp);
 	fwrite(data,len,1,log_fp);
 	fputc('\n',log_fp);
 	fflush(log_fp);
-	
+
+	pthread_mutex_unlock(&log_mutex);	
+
 	return 0;
 }
 
@@ -46,8 +62,6 @@ int create_pidfile()
 {
 	return 0;
 }
-
-	
 
 
 int is_http_request(const unsigned char* buf, int len)
@@ -125,8 +139,6 @@ int get_url(unsigned char* buf, int *url_len, const unsigned char *pkt_data, int
     
 }
 
-
-
 int field_len(const unsigned char* buf, int len)
 {
     int i = 0;
@@ -146,12 +158,15 @@ int is_tcp(const unsigned char* buf, int len)
 {
     if (len < 54)
         return 0;
-
-    if (buf[12] != 0x08 || buf[13] != 0x00){
+	
+	//l2proto = Linux cooked capture
+    //if (buf[12] != 0x08 || buf[13] != 0x00){
+    if (buf[14] != 0x08 || buf[15] != 0x00){
         return 0;
     }
     
-    if (buf[23] != 0x06){//tcp flag
+    //if (buf[23] != 0x06){//tcp flag
+    if (buf[25] != 0x06){//tcp flag
         return 0;
     }
 
@@ -178,8 +193,10 @@ void callback(unsigned char *user, const struct pcap_pkthdr *h, const unsigned c
         return;
     }
 
-    cur += 54;
-    len -= 54;//tcp hdr ip hdr
+    //cur += 54;
+    //len -= 54;//tcp hdr ip hdr
+    cur += 56;
+    len += 56;
 
     is_req = is_http_request(cur, len);
     hdr_len = http_hdr_len(cur, len);
@@ -204,34 +221,149 @@ void callback(unsigned char *user, const struct pcap_pkthdr *h, const unsigned c
     default:
         break;
     }
+}
 
-    
+
+void *capture_thread(void* arg)
+{
+
+	char dev[10];
+	pcap_t *pt;
+	char errbuf[PCAP_ERRBUF_SIZE];
+
+	strcpy(dev,(char*)arg);
+    	dev[9] = 0;
+
+	
+	pt = pcap_open_live(dev, SNAPLEN, PROMISC, -1, errbuf);
+    	if (pt == NULL){
+        	printf("open dev failed\n");
+        	return;
+    	}
+
+	pcap_loop(pt, -1, callback,NULL);
+//	pthread_detach(pthread_self());
+	printf("capture thread create\n");
+
+}
+
+int start_capture(char *dev)
+{
+
+	char dev_vpath[30] = "/sys/class/net/";
+	pthread_t thread;
+	pthread_attr_t attr;
+
+	strcpy(nic,dev);
+	sleep(1);
+	strcat(dev_vpath,nic);
+	if(access(dev_vpath,0) == 0){
+		int ret;
+		pthread_attr_init(&attr);
+		pthread_attr_setdetachstate(&attr,PTHREAD_CREATE_DETACHED);
+		pthread_create(&thread,&attr,capture_thread,nic);
+		pthread_attr_destroy(&attr);
+	}
+
+	return 0;	
+}
+
+
+void parseBinaryNetLinkMessage(struct nlmsghdr *nlh)
+{
+	int len = nlh->nlmsg_len - sizeof(*nlh);
+	struct ifinfomsg *ifi;
+
+	if(sizeof(*ifi) > (size_t)len){
+		printf("Got a short message\n");
+		return ;
+	}
+
+	ifi = (struct  ifinfomsg*)NLMSG_DATA(nlh);
+	if((ifi->ifi_flags & IFF_LOOPBACK) != 0){
+		return ;
+	}
+
+	struct rtattr *rta = (struct rtattr*)
+		((char*)ifi + NLMSG_ALIGN(sizeof(*ifi)));
+	len = NLMSG_PAYLOAD(nlh,sizeof(*ifi));
+
+	while(RTA_OK(rta,len)){
+		switch(rta->rta_type){
+			case IFLA_IFNAME:
+			{
+				char ifname[IFNAMSIZ];
+				int  up;
+				char id;
+				snprintf(ifname,sizeof(ifname),"%s",
+					(char*)RTA_DATA(rta));
+				up = (ifi->ifi_flags & IFF_RUNNING)? 1 : 0;
+				if (up && ((ifname[0] == 'p')&&(ifname[1] == 'p')&&
+					(ifname[2] == 'p'))){
+					printf("msg from:%s",ifname);
+					sscanf(ifname+3,"%d",(int*)&id);
+					if(nic_bitmap[id])
+						break;
+					start_capture(ifname);
+					nic_bitmap[id] = 1;	
+					printf("%s  %d\n",ifname,up);
+				} 
+				if (!up && ((ifname[0] == 'p')&&(ifname[1] == 'p')&&
+                                        (ifname[2] == 'p'))){
+					sscanf(ifname+3,"%d",(int*)&id);
+					nic_bitmap[id] = 0;
+					printf("%s %d\n",ifname,up);
+				}
+			}
+		}
+
+		rta = RTA_NEXT(rta,len);
+	}
 
 }
 
 
 int main(int argc,char** argv)
 {
-    pcap_t *pt;
-    char dev[10];
-    char errbuf[PCAP_ERRBUF_SIZE];
+
+	struct sockaddr_nl addr;
+	struct nlmsghdr *nlh;
+	char buffer[4096];
+	int sock,len;
 
 
-    if(argc != 2){
-	printf("./url_recoder eth0\n");
-	exit(0);	
-    }
+	//daemon(0,0);
+	create_pidfile();
+	log_init();
 
-    daemon(0,0);
-    create_pidfile();
-    log_init();
-    strcpy(dev,argv[1]);
-    dev[9] = 0;
-    pt = pcap_open_live(dev, SNAPLEN, PROMISC, -1, errbuf);
-    if (pt == NULL){
-        printf("open dev failed\n");
-        exit(0);
-    }
+	
+	if((sock = socket(AF_NETLINK,SOCK_RAW,NETLINK_ROUTE)) == -1){
+		printf("open NETLINK_ROUTE socket failed\n");
+		goto exit;
+	}
 
-    pcap_loop(pt, -1, callback,NULL);
+	memset(&addr,0,sizeof(addr));
+	addr.nl_family = AF_NETLINK;
+	addr.nl_groups = RTMGRP_LINK |RTMGRP_IPV4_IFADDR;
+	
+	if(bind(sock,(struct sockaddr*)&addr,sizeof(addr)) == -1){
+		printf("bind failed\n");
+		goto exit;
+	}
+
+	while((len = recv(sock,buffer,4096,0)) > 0){
+		nlh = (struct nlmsghdr*)buffer;
+		while((NLMSG_OK(nlh,len)) && (nlh->nlmsg_type != NLMSG_DONE)){
+			if(nlh->nlmsg_type == RTM_NEWLINK){
+				parseBinaryNetLinkMessage(nlh);
+			}
+			nlh = NLMSG_NEXT(nlh,len);
+		}
+	}
+
+	close(sock);
+	
+exit:
+		exit(0);
 }
+
