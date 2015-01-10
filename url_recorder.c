@@ -332,7 +332,7 @@ int main(int argc,char** argv)
 	int sock,len;
 
 
-	//daemon(0,0);
+	daemon(0,0);
 	create_pidfile();
 	log_init();
 
