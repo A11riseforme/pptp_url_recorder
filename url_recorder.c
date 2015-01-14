@@ -44,10 +44,10 @@ int logging(char *data,int len)
 
 	timet = time(NULL);
 	p = localtime(&timet);
+	strftime(str_time,sizeof(str_time),"<--%m-%d %H:%M:%S-->  ",p);
 	
 	pthread_mutex_lock(&log_mutex);
-
-	strftime(str_time,sizeof(str_time),"<--%m-%d %H:%M:%S-->  ",p);
+	
 	fwrite(str_time,strlen(str_time),1,log_fp);
 	fwrite(data,len,1,log_fp);
 	fputc('\n',log_fp);
