@@ -6,6 +6,7 @@ url_recorder
 程序守护进程方式运行在后台
 
 pptp_url_recorder.c
+
 只支持pptp类型的vpn，每个vpn用户登录的时候，系统会创建一个虚拟网卡pppx，
 程序捕获到事件后会自动一个线程针对这个虚拟网卡抓包
 无vpn用户的时候不工作
@@ -26,5 +27,11 @@ CentOS:yum install libpcap-devel -y
 gcc -o url_recorder url_recorder.c -lpcap -lpthread
 
 需要root权限
-./url_recorder 
+./url_recorder <参数eth0>
+
+或者
+gcc -o pptp_url_recorder pptp_url_recorder.c -lpcap -lpthread
+需要root
+./pptp_url_recorder 
+
 </code></pre>
