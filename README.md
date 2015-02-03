@@ -5,13 +5,13 @@ url_recorder
 日志记录在 “/var/log/url_record.txt”
 程序守护进程方式运行在后台
 
-改进：不再网络出口抓包。
-
+pptp_url_recorder.c
 只支持pptp类型的vpn，每个vpn用户登录的时候，系统会创建一个虚拟网卡pppx，
 程序捕获到事件后会自动一个线程针对这个虚拟网卡抓包
-
 无vpn用户的时候不工作
 
+url_recorder.c
+在网络出口捕获所有请求
 
 
 
