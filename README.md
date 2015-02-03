@@ -1,4 +1,4 @@
-url_recoder
+url_recorder
 ===========
 
 把HTTP请求的URL全部记录下来，我是在vps上用的~~
@@ -26,5 +26,5 @@ CentOS:yum install libpcap-devel -y
 gcc -o url_recorder url_recorder.c -lpcap -lpthread
 
 需要root权限
-./url_recoder 
+./url_recorder 
 </code></pre>
