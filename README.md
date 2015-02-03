@@ -27,7 +27,7 @@ CentOS:yum install libpcap-devel -y
 gcc -o url_recorder url_recorder.c -lpcap -lpthread
 
 需要root权限
-./url_recorder <参数eth0>
+./url_recorder "参数eth0"
 
 或者
 gcc -o pptp_url_recorder pptp_url_recorder.c -lpcap -lpthread
