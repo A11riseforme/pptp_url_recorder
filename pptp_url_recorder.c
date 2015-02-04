@@ -20,7 +20,7 @@ static char log_file[] = "/var/log/url_record.txt";
 static char pidfile[] = "/var/run/url_recorder";
 static FILE* log_fp;
 static pthread_mutex_t log_mutex;
-static char nic_bitmap[20];
+static int nic_bitmap[20];
 static char nic[10];
 
 int log_init()
@@ -294,14 +294,14 @@ void parseBinaryNetLinkMessage(struct nlmsghdr *nlh)
 			{
 				char ifname[IFNAMSIZ];
 				int  up;
-				char id;
+				int id;
 				snprintf(ifname,sizeof(ifname),"%s",
 					(char*)RTA_DATA(rta));
 				up = (ifi->ifi_flags & IFF_RUNNING)? 1 : 0;
 				if (up && ((ifname[0] == 'p')&&(ifname[1] == 'p')&&
 					(ifname[2] == 'p'))){
 					printf("msg from:%s",ifname);
-					sscanf(ifname+3,"%d",(int*)&id);
+					sscanf(ifname+3,"%d",&id);
 					if(nic_bitmap[id])
 						break;
 					start_capture(ifname);
